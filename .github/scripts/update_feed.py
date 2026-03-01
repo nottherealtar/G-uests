@@ -6,7 +6,7 @@ application database, generates banner images, and writes Data-Feed/index.html.
 Requires: DISCORD_TOKEN env var (your personal Discord user token).
 """
 
-import io, json, os, re, sys
+import base64, io, json, os, re, sys
 import requests
 from pathlib import Path
 from PIL import Image, ImageDraw
@@ -27,10 +27,41 @@ FEED_HTML  = Path("Data-Feed/index.html")
 FEED_JSON  = Path("Data-Feed/quests.json")
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Discord's /quests endpoint requires X-Super-Properties to identify the
+# request as coming from the desktop client — without it Discord returns 404.
+_super_props = base64.b64encode(json.dumps({
+    "os": "Windows",
+    "browser": "Discord Client",
+    "release_channel": "stable",
+    "client_version": "1.0.9035",
+    "os_version": "10.0.19045",
+    "os_arch": "x64",
+    "app_arch": "x64",
+    "system_locale": "en-US",
+    "browser_user_agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) discord/1.0.9035 Chrome/128.0.6613.186 "
+        "Electron/32.2.7 Safari/537.36"
+    ),
+    "browser_version": "32.2.7",
+    "client_build_number": 349345,
+    "native_build_number": 50714,
+    "client_event_source": None,
+}, separators=(',', ':'), ensure_ascii=False).encode()).decode()
+
 AUTH_HEADERS = {
     "Authorization": DISCORD_TOKEN,
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) discord/1.0.9035 Chrome/128.0.6613.186 "
+        "Electron/32.2.7 Safari/537.36"
+    ),
+    "X-Super-Properties": _super_props,
+    "X-Discord-Locale": "en-US",
+    "X-Discord-Timezone": "America/New_York",
     "Content-Type": "application/json",
+    "Accept": "*/*",
+    "Accept-Language": "en-US",
 }
 PUBLIC_HEADERS = {k: v for k, v in AUTH_HEADERS.items() if k != "Authorization"}
 
@@ -102,6 +133,10 @@ try:
     quests_raw = resp.json()
 except requests.HTTPError as e:
     print(f"ERROR: Could not fetch quests — {e}")
+    try:
+        print(f"Discord response: {e.response.text[:500]}")
+    except Exception:
+        pass
     print("Check that DISCORD_TOKEN is a valid user token (not a bot token).")
     sys.exit(1)
 
