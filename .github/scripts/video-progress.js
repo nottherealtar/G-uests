@@ -38,26 +38,33 @@
     if (token && QuestsStore) break;
   }
 
-  if (!token)       { alert('❌ Could not get Discord token.'); return; }
-  if (!QuestsStore) { alert('❌ QuestsStore not found.'); return; }
+  // Get live super properties from Discord's own module
+  let superPropsB64 = null;
+  for (const mod of Object.values(wpRequire.c)) {
+    try {
+      for (const [k, v] of Object.entries(mod?.exports || {})) {
+        if (k === 'default' && typeof v?.getSuperPropertiesBase64 === 'function') {
+          superPropsB64 = v.getSuperPropertiesBase64();
+          break;
+        }
+      }
+    } catch {}
+    if (superPropsB64) break;
+  }
 
-  console.log('[G-uests] Token acquired:', token.slice(0, 10) + '...');
+  if (!token)        { alert('❌ Could not get Discord token.'); return; }
+  if (!QuestsStore)  { alert('❌ QuestsStore not found.'); return; }
+  if (!superPropsB64){ alert('❌ Could not get super properties.'); return; }
 
-  const superProps = btoa(JSON.stringify({
-    os: 'Windows', browser: 'Discord Client', release_channel: 'stable',
-    client_version: '1.0.9035', os_version: '10.0.19045', os_arch: 'x64',
-    app_arch: 'x64', system_locale: 'en-US',
-    browser_user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9035 Chrome/128.0.6613.186 Electron/32.2.7 Safari/537.36',
-    browser_version: '32.2.7', client_build_number: 349345,
-    native_build_number: 50714, client_event_source: null,
-  }));
+  console.log('[G-uests] Ready. token:', token.slice(0, 10) + '...');
 
   const headers = {
-    'Authorization':      token,
-    'Content-Type':       'application/json',
-    'X-Super-Properties': superProps,
-    'X-Discord-Locale':   'en-US',
-    'User-Agent':         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9035 Chrome/128.0.6613.186 Electron/32.2.7 Safari/537.36',
+    'Authorization':       token,
+    'Content-Type':        'application/json',
+    'x-super-properties':  superPropsB64,
+    'x-discord-locale':    navigator.language || 'en-US',
+    'x-discord-timezone':  Intl.DateTimeFormat().resolvedOptions().timeZone,
+    'x-debug-options':     'bugReporterEnabled',
   };
 
   // ── Step 2: Find active WATCH_VIDEO quests ────────────────────────────────
@@ -97,9 +104,10 @@
       const ts = Math.min(current, targetSeconds);
       try {
         const res = await fetch(`${API}/quests/${questId}/video-progress`, {
-          method:  'POST',
+          method:      'POST',
+          credentials: 'include',
           headers,
-          body:    JSON.stringify({ timestamp: ts }),
+          body:        JSON.stringify({ timestamp: ts }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
