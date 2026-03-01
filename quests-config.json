@@ -1,4 +1,9 @@
 {
-  "_comment": "Add active Discord quest IDs here. Find them from community sources or Discord network requests.",
-  "quest_ids": []
+  "quest_ids": [
+    "1473453463752151071",
+    "1470543032142139434",
+    "1471340231008583894",
+    "1473407935970410724",
+    "1471589719186870377"
+  ]
 }
