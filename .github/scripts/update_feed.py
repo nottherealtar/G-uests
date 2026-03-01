@@ -176,18 +176,29 @@ for quest_id in quest_ids:
     banner_filename = f"{quest_id}.png"
     banner_path     = ASSETS_DIR / banner_filename
 
-    icon_data = None
-    if not banner_path.exists() and icon_hash:
-        try:
-            icon_data = get(
-                f"{CDN_BASE}/app-icons/{icon_app_id}/{icon_hash}.png?size=512",
-                auth=False
-            ).content
-            print(f"  Downloaded icon for {game_name}")
-        except Exception as e:
-            print(f"  WARNING: icon download failed — {e}")
-
     if not banner_path.exists():
+        icon_data = None
+
+        # Prefer quest hero image from Discord CDN
+        hero_path = cfg.get("assets", {}).get("hero", "")
+        if hero_path:
+            try:
+                icon_data = get(f"{CDN_BASE}/{hero_path}", auth=False).content
+                print(f"  Downloaded quest hero for {game_name}")
+            except Exception as e:
+                print(f"  WARNING: hero download failed — {e}")
+
+        # Fallback to app icon
+        if not icon_data and icon_hash:
+            try:
+                icon_data = get(
+                    f"{CDN_BASE}/app-icons/{icon_app_id}/{icon_hash}.png?size=512",
+                    auth=False
+                ).content
+                print(f"  Downloaded app icon for {game_name}")
+            except Exception as e:
+                print(f"  WARNING: icon download failed — {e}")
+
         banner_path.write_bytes(create_banner(icon_data or b""))
         print(f"  Generated banner → {banner_filename}")
 

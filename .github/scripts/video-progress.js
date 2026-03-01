@@ -53,7 +53,7 @@
     new Date(q.config.expiresAt) > now &&
     !q.userStatus?.completedAt &&
     q.userStatus?.enrolledAt &&
-    q.config?.taskConfig?.taskType === 'WATCH_VIDEO'
+    (q.config?.taskConfigV2?.tasks?.WATCH_VIDEO || q.config?.taskConfigV2?.tasks?.WATCH_VIDEO_ON_MOBILE)
   );
 
   if (!videoQuests.length) {
@@ -65,17 +65,19 @@
 
   // ── Step 3: Send progress for each quest ─────────────────────────────────
   for (const quest of videoQuests) {
-    const questId       = quest.id;
-    const targetSeconds = (quest.config?.taskConfig?.targetMinutes ?? 0) * 60
-                       || quest.config?.taskConfig?.targetDuration
-                       || 600;
+    const questId    = quest.id;
+    const taskConfig = quest.config?.taskConfigV2?.tasks?.WATCH_VIDEO
+                    || quest.config?.taskConfigV2?.tasks?.WATCH_VIDEO_ON_MOBILE;
+    const targetSeconds = taskConfig?.target || 600;
 
-    console.log(`[G-uests] Quest ${questId} — target: ${targetSeconds}s`);
+    console.log(`[G-uests] Quest ${questId} (${quest.config?.messages?.questName}) — target: ${targetSeconds}s`);
 
     const STEP     = 15;
     const DELAY_MS = 500;
 
-    let current = ((quest.userStatus?.progress?.video?.timestamp) || 0) + STEP;
+    let current = (quest.userStatus?.progress?.WATCH_VIDEO?.value
+               || quest.userStatus?.progress?.WATCH_VIDEO_ON_MOBILE?.value
+               || 0) + STEP;
 
     while (current <= targetSeconds + STEP) {
       const ts = Math.min(current, targetSeconds);
