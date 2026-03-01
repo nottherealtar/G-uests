@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>G-uests Sync Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111118;
+      color: #e0e0f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2e2e50;
+      border-radius: 16px;
+      max-width: 560px;
+      width: 100%;
+      padding: 36px;
+    }
+    h1 { font-size: 1.4rem; color: #fff; margin-bottom: 6px; }
+    .sub { color: #888; font-size: 0.9rem; margin-bottom: 28px; }
+    label { display: block; font-size: 0.82rem; color: #aaa; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      background: #111118;
+      border: 1px solid #333355;
+      border-radius: 8px;
+      color: #e0e0f0;
+      font-size: 0.9rem;
+      padding: 10px 14px;
+      outline: none;
+      margin-bottom: 20px;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #5865f2; }
+    .row { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
+    .bookmarklet {
+      display: inline-block;
+      background: #5865f2;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 12px 22px;
+      border-radius: 10px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.2s;
+      border: none;
+      white-space: nowrap;
+    }
+    .bookmarklet:hover { background: #4752c4; }
+    .hint { font-size: 0.8rem; color: #666; line-height: 1.5; }
+    .steps { margin-top: 28px; }
+    .step {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .num {
+      background: #2e2e50;
+      color: #8888cc;
+      font-size: 0.8rem;
+      font-weight: 700;
+      border-radius: 50%;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-text { font-size: 0.88rem; color: #ccc; line-height: 1.6; }
+    .step-text a { color: #5865f2; text-decoration: none; }
+    .step-text a:hover { text-decoration: underline; }
+    code {
+      background: #111118;
+      border: 1px solid #2e2e50;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.82rem;
+      color: #a0a0e0;
+    }
+    .divider { border: none; border-top: 1px solid #2e2e50; margin: 24px 0; }
+    #status { font-size: 0.82rem; color: #5865f2; margin-top: 8px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎮 G-uests Quest Sync</h1>
+    <p class="sub">Configure your bookmarklet once, then click it inside Discord whenever a new quest appears.</p>
+
+    <label for="pat">GitHub Personal Access Token</label>
+    <input id="pat" type="password" placeholder="github_pat_..." oninput="updateLink()" autocomplete="off">
+
+    <div class="row">
+      <a id="bookmarklet" class="bookmarklet" href="#" ondragstart="return false;">
+        🔄 Sync Quests to G-uests
+      </a>
+      <span class="hint">← drag this to your bookmarks bar<br>or click after configuring</span>
+    </div>
+    <div id="status"></div>
+
+    <hr class="divider">
+
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div class="step-text">
+          Create a GitHub fine-grained PAT at
+          <a href="https://github.com/settings/tokens?type=beta" target="_blank">github.com/settings/tokens</a>
+          — set repository access to <strong>nottherealtar/G-uests</strong>,
+          permissions: <strong>Contents → Read and write</strong>.
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div class="step-text">
+          Paste the token into the field above. The bookmarklet updates instantly.
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div class="step-text">
+          Drag the <strong>Sync Quests to G-uests</strong> button to your bookmarks bar.
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <div class="step-text">
+          When a new Discord quest appears: open <strong>Discord desktop app</strong>,
+          then click the bookmark. Quest IDs are read from Discord's internal store
+          and committed to <code>quests-config.json</code> automatically — triggering
+          the GitHub Action to rebuild the feed.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const OWNER = 'nottherealtar';
+    const REPO  = 'G-uests';
+    const PATH  = 'quests-config.json';
+
+    // Minified bookmarklet core (same logic as .github/scripts/sync-quests.js)
+    function buildBookmarklet(token) {
+      const code = `(async function GuestSync(){
+const GITHUB_TOKEN="${token.replace(/"/g,'\\"')}";
+const OWNER="${OWNER}",REPO="${REPO}",PATH="${PATH}";
+try{if(typeof webpackChunkdiscord_app==='undefined')throw new Error('Run this inside Discord desktop.');
+const r=webpackChunkdiscord_app.push([[Symbol()],{},e=>e]);webpackChunkdiscord_app.pop();
+const f=fn=>Object.values(r.c).find(x=>{try{return fn(x)}catch{return false}});
+const Q=f(x=>x?.exports?.A?.proto?.getQuest)?.exports?.A||f(x=>x?.exports?.Z?.proto?.getQuest)?.exports?.Z||f(x=>x?.exports?.ZP?.proto?.getQuest)?.exports?.ZP;
+if(!Q)throw new Error('QuestsStore not found in this Discord build.');
+const now=Date.now();
+const ids=[...Q.quests.values()].filter(q=>q?.config?.expiresAt&&new Date(q.config.expiresAt)>now&&!q.userStatus?.completedAt).map(q=>String(q.id)).filter(Boolean);
+console.log('[G-uests] Quest IDs:',ids);
+if(!ids.length){alert('No active quests found.');return;}
+const apiUrl='https://api.github.com/repos/'+OWNER+'/'+REPO+'/contents/'+PATH;
+const h={'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'};
+let sha=null,existing=[];
+try{const res=await fetch(apiUrl,{headers:h});if(res.ok){const d=await res.json();sha=d.sha;existing=(JSON.parse(atob(d.content.replace(/\\s/g,''))).quest_ids||[]);}}catch(e){}
+const merged=[...new Set([...existing,...ids])];
+const added=ids.filter(i=>!existing.includes(i));
+if(!added.length){alert('All '+ids.length+' quest(s) already synced.');return;}
+const content=btoa(unescape(encodeURIComponent(JSON.stringify({quest_ids:merged},null,2)+'\\n')));
+const res=await fetch(apiUrl,{method:'PUT',headers:h,body:JSON.stringify({message:'chore: sync quest IDs ['+added.join(', ')+']',content,...(sha?{sha}:{})})});
+if(!res.ok){const e=await res.json();throw new Error(e.message||res.statusText);}
+alert('\\u2705 Synced '+added.length+' quest ID(s):\\n'+added.join('\\n')+'\\n\\nGitHub Action is rebuilding the feed.');
+}catch(err){alert('\\u274c '+err.message);}
+})();`;
+      return 'javascript:' + encodeURIComponent(code);
+    }
+
+    function updateLink() {
+      const pat    = document.getElementById('pat').value.trim();
+      const link   = document.getElementById('bookmarklet');
+      const status = document.getElementById('status');
+      if (pat) {
+        link.href = buildBookmarklet(pat);
+        status.textContent = '✓ Bookmarklet ready — drag it to your bookmarks bar.';
+      } else {
+        link.href = '#';
+        status.textContent = '';
+      }
+    }
+
+    // Prevent navigating away when clicking without a token
+    document.getElementById('bookmarklet').addEventListener('click', function(e) {
+      const pat = document.getElementById('pat').value.trim();
+      if (!pat) {
+        e.preventDefault();
+        document.getElementById('status').textContent = '⚠ Enter your GitHub token first.';
+      }
+    });
+  </script>
+</body>
+</html>
