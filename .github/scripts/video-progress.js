@@ -41,9 +41,23 @@
   if (!token)       { alert('❌ Could not get Discord token.'); return; }
   if (!QuestsStore) { alert('❌ QuestsStore not found.'); return; }
 
+  console.log('[G-uests] Token acquired:', token.slice(0, 10) + '...');
+
+  const superProps = btoa(JSON.stringify({
+    os: 'Windows', browser: 'Discord Client', release_channel: 'stable',
+    client_version: '1.0.9035', os_version: '10.0.19045', os_arch: 'x64',
+    app_arch: 'x64', system_locale: 'en-US',
+    browser_user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9035 Chrome/128.0.6613.186 Electron/32.2.7 Safari/537.36',
+    browser_version: '32.2.7', client_build_number: 349345,
+    native_build_number: 50714, client_event_source: null,
+  }));
+
   const headers = {
-    'Authorization': token,
-    'Content-Type':  'application/json',
+    'Authorization':      token,
+    'Content-Type':       'application/json',
+    'X-Super-Properties': superProps,
+    'X-Discord-Locale':   'en-US',
+    'User-Agent':         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9035 Chrome/128.0.6613.186 Electron/32.2.7 Safari/537.36',
   };
 
   // ── Step 2: Find active WATCH_VIDEO quests ────────────────────────────────
@@ -90,8 +104,10 @@
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           console.warn(`[G-uests] ${questId} @ ${ts}s — ${res.status}: ${err.message || res.statusText}`);
+          if (res.status === 404) { console.warn(`[G-uests] ${questId} — endpoint not found, skipping quest.`); break; }
         } else {
-          console.log(`[G-uests] ${questId} — ${ts}/${targetSeconds}s`);
+          const body = await res.json().catch(() => ({}));
+          console.log(`[G-uests] ${questId} — ${ts}/${targetSeconds}s | server progress: ${JSON.stringify(body?.progress || body)?.slice(0,80)}`);
         }
       } catch (e) {
         console.warn(`[G-uests] ${questId} — fetch error:`, e.message);
