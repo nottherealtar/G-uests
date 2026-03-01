@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Fetches active Discord quests, matches them against Discord's detectable
-application database, generates banner images, and writes Data-Feed/index.html.
+Reads quest IDs from quests-config.json, fetches each quest's config from
+Discord's API (/quests/{id}), enriches with detectable-app data, generates
+banner images, and writes Data-Feed/index.html + Data-Feed/quests.json.
 
-Requires: DISCORD_TOKEN env var (your personal Discord user token).
+Requires: DISCORD_TOKEN env var (personal Discord user token, not a bot token).
+Add active quest IDs to quests-config.json when new Discord quests launch.
 """
 
 import base64, io, json, os, re, sys
@@ -19,16 +21,15 @@ if not DISCORD_TOKEN:
     print("ERROR: DISCORD_TOKEN environment variable is not set.")
     sys.exit(1)
 
-API_BASE  = "https://discord.com/api/v9"
-CDN_BASE  = "https://cdn.discordapp.com"
-
-ASSETS_DIR = Path("Data-Feed/Assets")
-FEED_HTML  = Path("Data-Feed/index.html")
-FEED_JSON  = Path("Data-Feed/quests.json")
+API_BASE   = "https://discord.com/api/v9"
+CDN_BASE   = "https://cdn.discordapp.com"
+CONFIG_FILE = Path("quests-config.json")
+ASSETS_DIR  = Path("Data-Feed/Assets")
+FEED_HTML   = Path("Data-Feed/index.html")
+FEED_JSON   = Path("Data-Feed/quests.json")
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Discord's /quests endpoint requires X-Super-Properties to identify the
-# request as coming from the desktop client — without it Discord returns 404.
+# Discord user-facing endpoints need these headers to return real data.
 _super_props = base64.b64encode(json.dumps({
     "os": "Windows",
     "browser": "Discord Client",
@@ -49,7 +50,7 @@ _super_props = base64.b64encode(json.dumps({
     "client_event_source": None,
 }, separators=(',', ':'), ensure_ascii=False).encode()).decode()
 
-AUTH_HEADERS = {
+HEADERS = {
     "Authorization": DISCORD_TOKEN,
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -58,190 +59,174 @@ AUTH_HEADERS = {
     ),
     "X-Super-Properties": _super_props,
     "X-Discord-Locale": "en-US",
-    "X-Discord-Timezone": "America/New_York",
     "Content-Type": "application/json",
     "Accept": "*/*",
-    "Accept-Language": "en-US",
 }
-PUBLIC_HEADERS = {k: v for k, v in AUTH_HEADERS.items() if k != "Authorization"}
+PUBLIC_HEADERS = {k: v for k, v in HEADERS.items() if k != "Authorization"}
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def get(url, auth=True, **kwargs):
-    h = AUTH_HEADERS if auth else PUBLIC_HEADERS
+    h = HEADERS if auth else PUBLIC_HEADERS
     r = requests.get(url, headers=h, timeout=20, **kwargs)
     r.raise_for_status()
     return r
 
 def safe_name(text):
-    """Strip characters that are invalid in Windows paths."""
     return re.sub(r'[<>:"/\\|?*]', '', text).strip()
 
 def get_exe_stem(app: dict) -> str:
-    """Return the best Windows executable stem (no path, no .exe)."""
     exes = [e for e in app.get("executables", [])
             if e.get("os") == "win32" and not e.get("is_launcher", False)]
     if not exes:
         exes = [e for e in app.get("executables", []) if e.get("os") == "win32"]
     if not exes:
         return safe_name(app.get("name", "game")).replace(" ", "")
-    return Path(exes[0]["name"]).stem   # handles "bin/game.exe" → "game"
+    return Path(exes[0]["name"]).stem
 
 def build_href(game_name: str, exe_stem: str) -> str:
-    """Construct the Windows path that Discord will see as the running game."""
-    dir_name = safe_name(game_name)
-    return rf"#Steam\steamapps\common\{dir_name}\Binaries\Win64\{exe_stem}"
+    return rf"#Steam\steamapps\common\{safe_name(game_name)}\Binaries\Win64\{exe_stem}"
 
 def create_banner(icon_bytes: bytes, size=(440, 220)) -> bytes:
-    """
-    Generates a banner PNG: dark gradient background with the Discord
-    app icon centred and slightly enlarged.
-    """
     w, h = size
-    # Dark background
     banner = Image.new("RGB", (w, h), (18, 18, 30))
-
-    try:
-        icon = Image.open(io.BytesIO(icon_bytes)).convert("RGBA")
-        icon.thumbnail((int(h * 0.85), int(h * 0.85)), Image.LANCZOS)
-        x = (w - icon.width) // 2
-        y = (h - icon.height) // 2
-        banner.paste(icon, (x, y), icon)
-    except Exception:
-        pass
-
-    # Subtle vignette at edges
+    if icon_bytes:
+        try:
+            icon = Image.open(io.BytesIO(icon_bytes)).convert("RGBA")
+            icon.thumbnail((int(h * 0.85), int(h * 0.85)), Image.LANCZOS)
+            banner.paste(icon, ((w - icon.width) // 2, (h - icon.height) // 2), icon)
+        except Exception:
+            pass
     vignette = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(vignette)
     for i in range(30):
-        alpha = int(120 * (i / 30))
-        draw.rectangle([0, h - 30 + i, w, h - 30 + i + 1], fill=(0, 0, 0, alpha))
-    banner.paste(Image.new("RGB", (w, h), (0, 0, 0)), (0, 0),
-                 vignette.split()[3])
-
+        draw.rectangle([0, h - 30 + i, w, h - 30 + i + 1],
+                       fill=(0, 0, 0, int(120 * i / 30)))
+    banner.paste(Image.new("RGB", (w, h), (0, 0, 0)), (0, 0), vignette.split()[3])
     buf = io.BytesIO()
     banner.save(buf, "PNG", optimize=True)
     return buf.getvalue()
 
 # ---------------------------------------------------------------------------
-# Step 1 – Fetch active quests (requires user auth)
+# Step 1 – Read quest IDs from config
 # ---------------------------------------------------------------------------
-print("Fetching active quests from Discord...")
-try:
-    resp = get(f"{API_BASE}/quests")
-    quests_raw = resp.json()
-except requests.HTTPError as e:
-    print(f"ERROR: Could not fetch quests — {e}")
-    try:
-        print(f"Discord response: {e.response.text[:500]}")
-    except Exception:
-        pass
-    print("Check that DISCORD_TOKEN is a valid user token (not a bot token).")
+if not CONFIG_FILE.exists():
+    print(f"ERROR: {CONFIG_FILE} not found.")
     sys.exit(1)
 
-# API returns list or {"quests": [...]}
-quests = quests_raw if isinstance(quests_raw, list) else quests_raw.get("quests", [])
-print(f"  Found {len(quests)} active quest(s).")
+config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+quest_ids = config.get("quest_ids", [])
 
-if not quests:
-    print("No active quests right now — feed unchanged.")
+if not quest_ids:
+    print("No quest IDs in quests-config.json — nothing to do.")
+    print("Add active quest IDs to quests-config.json to populate the feed.")
     sys.exit(0)
 
+print(f"Processing {len(quest_ids)} quest ID(s): {quest_ids}")
+
 # ---------------------------------------------------------------------------
-# Step 2 – Load all detectable applications (no auth needed, ~1 800 games)
+# Step 2 – Load detectable applications (public, no auth)
 # ---------------------------------------------------------------------------
-print("Loading Discord detectable applications database...")
+print("Loading Discord detectable applications...")
 try:
-    detectable = get(f"{API_BASE}/applications/detectable", auth=False).json()
-    det_map = {app["id"]: app for app in detectable}
+    det_map = {a["id"]: a for a in get(f"{API_BASE}/applications/detectable", auth=False).json()}
     print(f"  Loaded {len(det_map)} applications.")
 except Exception as e:
     print(f"WARNING: Could not load detectable apps — {e}")
     det_map = {}
 
 # ---------------------------------------------------------------------------
-# Step 3 – Build game entries
+# Step 3 – Fetch each quest config from Discord
 # ---------------------------------------------------------------------------
 game_entries = []
-seen_ids = set()
 
-for quest in quests:
-    cfg = quest.get("config", {})
-
-    # Application ID lives at config.application.id
-    app_obj  = cfg.get("application", {})
-    app_id   = app_obj.get("id") or cfg.get("application_id")
-    app_name = app_obj.get("name", "")
-
-    if not app_id or app_id in seen_ids:
+for quest_id in quest_ids:
+    print(f"\nFetching quest {quest_id}...")
+    try:
+        data = get(f"{API_BASE}/quests/{quest_id}").json()
+    except requests.HTTPError as e:
+        body = ""
+        try: body = e.response.text[:300]
+        except Exception: pass
+        print(f"  WARNING: Could not fetch quest {quest_id} — {e} {body}")
+        print("  Skipping (quest may have expired or ID is wrong).")
         continue
-    seen_ids.add(app_id)
 
-    # Merge data from detectable map (richer than quest config)
-    det = det_map.get(app_id, {})
-    game_name = det.get("name") or app_name or f"Game {app_id}"
+    cfg      = data.get("config", data)   # some endpoints wrap in "config"
+    app_obj  = cfg.get("application", {})
+    app_id   = app_obj.get("id", "")
+    app_name = (
+        cfg.get("messages", {}).get("game_title")
+        or app_obj.get("name")
+        or f"Quest {quest_id}"
+    )
+
+    det       = det_map.get(app_id, {})
+    game_name = det.get("name") or app_name
     icon_hash = det.get("icon_hash", "")
     exe_stem  = get_exe_stem(det) if det else safe_name(game_name).replace(" ", "")
     href      = build_href(game_name, exe_stem)
 
     # Download icon → generate banner
-    banner_filename = f"{app_id}.png"
-    banner_path = ASSETS_DIR / banner_filename
+    banner_filename = f"{app_id or quest_id}.png"
+    banner_path     = ASSETS_DIR / banner_filename
+
+    icon_data = None
+    if not banner_path.exists() and icon_hash:
+        try:
+            icon_data = get(
+                f"{CDN_BASE}/app-icons/{app_id}/{icon_hash}.png?size=512",
+                auth=False
+            ).content
+            print(f"  Downloaded icon for {game_name}")
+        except Exception as e:
+            print(f"  WARNING: icon download failed — {e}")
 
     if not banner_path.exists():
-        icon_data = None
-        if icon_hash:
-            try:
-                icon_data = get(
-                    f"{CDN_BASE}/app-icons/{app_id}/{icon_hash}.png?size=512",
-                    auth=False
-                ).content
-                print(f"  Downloaded icon for {game_name}")
-            except Exception as e:
-                print(f"  WARNING: icon download failed for {game_name} — {e}")
-
-        banner_bytes = create_banner(icon_data or b"")
-        banner_path.write_bytes(banner_bytes)
+        banner_path.write_bytes(create_banner(icon_data or b""))
         print(f"  Generated banner → {banner_filename}")
 
-    game_entries.append({
+    entry = {
+        "quest_id": quest_id,
         "app_id":   app_id,
         "name":     game_name,
         "banner":   banner_filename,
         "href":     href,
         "exe":      exe_stem,
-    })
-    print(f"  + {game_name}  ({exe_stem}.exe)")
+    }
+    game_entries.append(entry)
+    print(f"  + {game_name}  →  {exe_stem}.exe")
+
+if not game_entries:
+    print("\nNo valid quests resolved — feed unchanged.")
+    sys.exit(0)
 
 # ---------------------------------------------------------------------------
 # Step 4 – Write Data-Feed/index.html
 # ---------------------------------------------------------------------------
-divs = []
-for e in game_entries:
-    divs.append(
-        f'    <div data-name="{e["name"]}" style="padding-bottom:20px;padding-left:12px;">\n'
-        f'        <img src="./Assets/{e["banner"]}" alt="{e["name"]}" style="display:block;">\n'
-        f'        <a href="{e["href"]}">\n'
-        f'            <img src="./Assets/button.png" alt="">\n'
-        f'        </a>\n'
-        f'    </div>'
-    )
+divs = "\n\n".join(
+    f'    <div data-name="{e["name"]}" style="padding-bottom:20px;padding-left:12px;">\n'
+    f'        <img src="./Assets/{e["banner"]}" alt="{e["name"]}" style="display:block;">\n'
+    f'        <a href="{e["href"]}">\n'
+    f'            <img src="./Assets/button.png" alt="">\n'
+    f'        </a>\n'
+    f'    </div>'
+    for e in game_entries
+)
 
-html = (
-    '<!DOCTYPE html>\n'
-    '<html lang="en">\n'
+FEED_HTML.write_text(
+    '<!DOCTYPE html>\n<html lang="en">\n'
     '<head><meta charset="UTF-8"><title></title></head>\n'
     '<body style="background-color:#19191d;">\n\n'
-    + "\n\n".join(divs) +
-    '\n\n</body>\n</html>\n'
+    + divs +
+    '\n\n</body>\n</html>\n',
+    encoding="utf-8"
 )
-FEED_HTML.write_text(html, encoding="utf-8")
 print(f"\nWrote {len(game_entries)} quest(s) to {FEED_HTML}")
 
 # ---------------------------------------------------------------------------
-# Step 5 – Write Data-Feed/quests.json (for future use / debugging)
+# Step 5 – Write Data-Feed/quests.json
 # ---------------------------------------------------------------------------
-FEED_JSON.write_text(json.dumps(game_entries, indent=2, ensure_ascii=False),
-                     encoding="utf-8")
+FEED_JSON.write_text(json.dumps(game_entries, indent=2, ensure_ascii=False), encoding="utf-8")
 print(f"Wrote metadata to {FEED_JSON}")
