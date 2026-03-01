@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Generated game stubs (created at runtime, not source files)
+Binaries/Win64/Steam/
+Binaries/Win64/steamapps/
+Binaries/Win64/Where*/
+Binaries/Win64/*.exe
+
+# Claude Code local config
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

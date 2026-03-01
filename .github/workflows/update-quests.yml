@@ -1,0 +1,39 @@
+name: Update Quest Data Feed
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'   # Every 4 hours
+  workflow_dispatch:          # Manual trigger from GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  update-feed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests Pillow
+
+      - name: Fetch active quests and update feed
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: python .github/scripts/update_feed.py
+
+      - name: Commit and push if feed changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Data-Feed/
+          git diff --staged --quiet \
+            && echo "No quest changes detected." \
+            || (git commit -m "chore: auto-update quest feed [skip ci]" && git push)
