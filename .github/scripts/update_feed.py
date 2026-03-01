@@ -130,11 +130,14 @@ print(f"Processing {len(quest_ids)} quest ID(s): {quest_ids}")
 # ---------------------------------------------------------------------------
 print("Loading Discord detectable applications...")
 try:
-    det_map = {a["id"]: a for a in get(f"{API_BASE}/applications/detectable", auth=False).json()}
+    det_list = get(f"{API_BASE}/applications/detectable", auth=False).json()
+    det_map      = {a["id"]: a for a in det_list}
+    det_name_map = {a["name"].lower(): a for a in det_list}
     print(f"  Loaded {len(det_map)} applications.")
 except Exception as e:
     print(f"WARNING: Could not load detectable apps — {e}")
     det_map = {}
+    det_name_map = {}
 
 # ---------------------------------------------------------------------------
 # Step 3 – Fetch each quest config from Discord
@@ -162,21 +165,22 @@ for quest_id in quest_ids:
         or f"Quest {quest_id}"
     )
 
-    det       = det_map.get(app_id, {})
+    det       = det_map.get(app_id, {}) or det_name_map.get(app_name.lower(), {})
     game_name = det.get("name") or app_name
     icon_hash = det.get("icon_hash", "")
+    icon_app_id = det.get("id", app_id)
     exe_stem  = get_exe_stem(det) if det else safe_name(game_name).replace(" ", "")
     href      = build_href(game_name, exe_stem)
 
-    # Download icon → generate banner
-    banner_filename = f"{app_id or quest_id}.png"
+    # Each quest gets its own banner file (quests may share app_id)
+    banner_filename = f"{quest_id}.png"
     banner_path     = ASSETS_DIR / banner_filename
 
     icon_data = None
     if not banner_path.exists() and icon_hash:
         try:
             icon_data = get(
-                f"{CDN_BASE}/app-icons/{app_id}/{icon_hash}.png?size=512",
+                f"{CDN_BASE}/app-icons/{icon_app_id}/{icon_hash}.png?size=512",
                 auth=False
             ).content
             print(f"  Downloaded icon for {game_name}")
