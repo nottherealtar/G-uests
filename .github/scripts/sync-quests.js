@@ -40,15 +40,19 @@
     const wpRequire = webpackChunkdiscord_app.push([[Symbol()], {}, r => r]);
     webpackChunkdiscord_app.pop();
 
-    const find = filter => Object.values(wpRequire.c).find(x => {
-      try { return filter(x); } catch { return false; }
-    });
-
-    // Try multiple selector patterns across Discord build variants
-    const QuestsStore =
-      find(x => x?.exports?.A?.proto?.getQuest)?.exports?.A  ||
-      find(x => x?.exports?.Z?.proto?.getQuest)?.exports?.Z  ||
-      find(x => x?.exports?.ZP?.proto?.getQuest)?.exports?.ZP;
+    // Find QuestsStore: must have getQuest method AND quests as a live Map
+    let QuestsStore = null;
+    for (const mod of Object.values(wpRequire.c)) {
+      try {
+        for (const val of Object.values(mod?.exports || {})) {
+          if (typeof val?.getQuest === 'function' && val.quests instanceof Map) {
+            QuestsStore = val;
+            break;
+          }
+        }
+      } catch {}
+      if (QuestsStore) break;
+    }
 
     if (!QuestsStore) throw new Error('QuestsStore module not found in this Discord build.');
 

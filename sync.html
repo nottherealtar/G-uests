@@ -158,7 +158,7 @@ const OWNER="${OWNER}",REPO="${REPO}",PATH="${PATH}";
 try{if(typeof webpackChunkdiscord_app==='undefined')throw new Error('Run this inside Discord desktop.');
 const r=webpackChunkdiscord_app.push([[Symbol()],{},e=>e]);webpackChunkdiscord_app.pop();
 const f=fn=>Object.values(r.c).find(x=>{try{return fn(x)}catch{return false}});
-const Q=f(x=>x?.exports?.A?.proto?.getQuest)?.exports?.A||f(x=>x?.exports?.Z?.proto?.getQuest)?.exports?.Z||f(x=>x?.exports?.ZP?.proto?.getQuest)?.exports?.ZP;
+let Q=null;for(const m of Object.values(r.c)){try{for(const v of Object.values(m?.exports||{})){if(typeof v?.getQuest==='function'&&v.quests instanceof Map){Q=v;break;}}}catch{}if(Q)break;}
 if(!Q)throw new Error('QuestsStore not found in this Discord build.');
 const now=Date.now();
 const ids=[...Q.quests.values()].filter(q=>q?.config?.expiresAt&&new Date(q.config.expiresAt)>now&&!q.userStatus?.completedAt).map(q=>String(q.id)).filter(Boolean);
