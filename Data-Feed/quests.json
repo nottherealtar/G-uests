@@ -1,0 +1,42 @@
+[
+  {
+    "quest_id": "1473453463752151071",
+    "app_id": "545364944258990091",
+    "name": "Anno 117: Pax Romana",
+    "banner": "545364944258990091.png",
+    "href": "#Steam\\steamapps\\common\\Anno 117 Pax Romana\\Binaries\\Win64\\Anno117PaxRomana",
+    "exe": "Anno117PaxRomana"
+  },
+  {
+    "quest_id": "1470543032142139434",
+    "app_id": "1461077510887309650",
+    "name": "Opera GX",
+    "banner": "1461077510887309650.png",
+    "href": "#Steam\\steamapps\\common\\Opera GX\\Binaries\\Win64\\OperaGX",
+    "exe": "OperaGX"
+  },
+  {
+    "quest_id": "1471340231008583894",
+    "app_id": "545364944258990091",
+    "name": "World of Warcraft",
+    "banner": "545364944258990091.png",
+    "href": "#Steam\\steamapps\\common\\World of Warcraft\\Binaries\\Win64\\WorldofWarcraft",
+    "exe": "WorldofWarcraft"
+  },
+  {
+    "quest_id": "1473407935970410724",
+    "app_id": "1442714232331436062",
+    "name": "John Carpenter's Toxic Commando",
+    "banner": "1442714232331436062.png",
+    "href": "#Steam\\steamapps\\common\\John Carpenter's Toxic Commando\\Binaries\\Win64\\JohnCarpenter'sToxicCommando",
+    "exe": "JohnCarpenter'sToxicCommando"
+  },
+  {
+    "quest_id": "1471589719186870377",
+    "app_id": "545364944258990091",
+    "name": "Rainbow 6 Siege X",
+    "banner": "545364944258990091.png",
+    "href": "#Steam\\steamapps\\common\\Rainbow 6 Siege X\\Binaries\\Win64\\Rainbow6SiegeX",
+    "exe": "Rainbow6SiegeX"
+  }
+]
