@@ -14,27 +14,39 @@
 
 (async function VideoWatcher() {
 
-  // ── Step 1: Find QuestsStore and API module ───────────────────────────────
+  const API = 'https://discord.com/api/v9';
+
+  // ── Step 1: Get Discord token from internal store ─────────────────────────
   const wpRequire = webpackChunkdiscord_app.push([[Symbol()], {}, r => r]);
   webpackChunkdiscord_app.pop();
 
+  let token = null;
   let QuestsStore = null;
-  let api = null;
 
   for (const mod of Object.values(wpRequire.c)) {
     try {
       for (const val of Object.values(mod?.exports || {})) {
-        if (typeof val?.getQuest === 'function' && val.quests instanceof Map) QuestsStore = val;
-        if (!api && (typeof val?.post === 'function') && (typeof val?.get === 'function') && val?.post?.toString().includes('url')) api = val;
+        if (!token && typeof val?.getToken === 'function') {
+          const t = val.getToken();
+          if (typeof t === 'string' && t.length > 20) token = t;
+        }
+        if (!QuestsStore && typeof val?.getQuest === 'function' && val.quests instanceof Map) {
+          QuestsStore = val;
+        }
       }
     } catch {}
-    if (QuestsStore && api) break;
+    if (token && QuestsStore) break;
   }
 
+  if (!token)       { alert('❌ Could not get Discord token.'); return; }
   if (!QuestsStore) { alert('❌ QuestsStore not found.'); return; }
-  if (!api) { alert('❌ Discord API module not found.'); return; }
 
-  // ── Step 2: Find active video quests ─────────────────────────────────────
+  const headers = {
+    'Authorization': token,
+    'Content-Type':  'application/json',
+  };
+
+  // ── Step 2: Find active WATCH_VIDEO quests ────────────────────────────────
   const now = Date.now();
   const videoQuests = [...QuestsStore.quests.values()].filter(q =>
     q?.config?.expiresAt &&
@@ -54,34 +66,41 @@
   // ── Step 3: Send progress for each quest ─────────────────────────────────
   for (const quest of videoQuests) {
     const questId       = quest.id;
-    const targetSeconds = quest.config?.taskConfig?.targetMinutes * 60
+    const targetSeconds = (quest.config?.taskConfig?.targetMinutes ?? 0) * 60
                        || quest.config?.taskConfig?.targetDuration
-                       || 600; // fallback 10 min
+                       || 600;
 
-    console.log(`[G-uests] Starting video quest ${questId} — target: ${targetSeconds}s`);
+    console.log(`[G-uests] Quest ${questId} — target: ${targetSeconds}s`);
 
-    const STEP     = 15;   // seconds per update
-    const DELAY_MS = 500;  // ms between requests (avoid rate limiting)
+    const STEP     = 15;
+    const DELAY_MS = 500;
 
-    let current = (quest.userStatus?.progress?.video?.timestamp || 0) + STEP;
+    let current = ((quest.userStatus?.progress?.video?.timestamp) || 0) + STEP;
 
     while (current <= targetSeconds + STEP) {
+      const ts = Math.min(current, targetSeconds);
       try {
-        await api.post({
-          url:  `/quests/${questId}/video-progress`,
-          body: { timestamp: Math.min(current, targetSeconds) },
+        const res = await fetch(`${API}/quests/${questId}/video-progress`, {
+          method:  'POST',
+          headers,
+          body:    JSON.stringify({ timestamp: ts }),
         });
-        console.log(`[G-uests] Quest ${questId} — progress: ${current}/${targetSeconds}s`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          console.warn(`[G-uests] ${questId} @ ${ts}s — ${res.status}: ${err.message || res.statusText}`);
+        } else {
+          console.log(`[G-uests] ${questId} — ${ts}/${targetSeconds}s`);
+        }
       } catch (e) {
-        console.warn(`[G-uests] Quest ${questId} — request failed at ${current}s:`, e?.message);
+        console.warn(`[G-uests] ${questId} — fetch error:`, e.message);
       }
       current += STEP;
       await new Promise(r => setTimeout(r, DELAY_MS));
     }
 
-    console.log(`[G-uests] ✅ Quest ${questId} video progress complete.`);
+    console.log(`[G-uests] ✅ Quest ${questId} done.`);
   }
 
-  alert(`✅ Video progress sent for ${videoQuests.length} quest(s).\n\nCheck your Discord quests panel to confirm completion.`);
+  alert(`✅ Video progress sent for ${videoQuests.length} quest(s).\nCheck your Discord quests panel to confirm completion.`);
 
 })();
